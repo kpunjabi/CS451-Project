@@ -1,12 +1,7 @@
 package main
 
-import (
-	"fmt"
-)
-
 func (r *Ring) init(conf *Config) {
 	// Set our variables
-	fmt.Println("Entered Ring.Init function ")
 	r.config = conf
 	r.lnodes = make([]*LocalNode,1)
 	// Initializes the first lnode	
@@ -14,8 +9,6 @@ func (r *Ring) init(conf *Config) {
 	r.lnodes[0] = vn
 	vn.Ring = r
 	vn.init()
-	
-	fmt.Println("Exited ring.init function")
 }
 
 // Wait for all the vnodes to shutdown

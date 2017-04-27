@@ -63,27 +63,20 @@ type LocalNode struct {
 
 // Creates a new Chord ring given the config and transport
 func Create(conf *Config) (*Ring, error) {
-	fmt.Println("Entered Create function ")
-	// Initialize the hash bits
-	//conf.hashBits = conf.HashFunc().Size() * 8
 	// Create and initialize a ring
 	ring := &Ring{}
 	ring.init(conf)
-	//ring.setLocalSuccessors()
-	//ring.schedule()
 	fmt.Println("Exited Create function wt ring = ",ring)
 	return ring, nil
 }
 
 
 func Join(conf *Config, existing string) (*Ring, error) {
-	//conf.hashBits = conf.HashFunc().Size() * 8
 	// Create a ring
 	ring := &Ring{}
 	ring.init(conf)
 	succ:=SNode{}
 	fmt.Println("Existing node's address : ",existing)
-	fmt.Println("Existing node's Id : ",ring.lnodes[0].Id)
 	err:=RPC_caller(existing,"FindCoordinator",ring.lnodes[0].Id, &succ)
 	ring.lnodes[0].Successors[0]=&succ
 	err=RPC_caller(succ.Host,"GetAll",ring.lnodes[0].Host, &(ring.lnodes[0].Store))

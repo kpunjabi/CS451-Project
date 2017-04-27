@@ -10,7 +10,6 @@ import (
 	"strings"
 	"math/rand"
 	"io/ioutil"
-	//"runtime"
 	"time"
 	"net/rpc/jsonrpc"
 )
@@ -119,9 +118,7 @@ func main() {
 
 	filename := "testoutput.txt"
 	fmt.Println("Launching server...")
-	//runtime.GOMAXPROCS(runtime.NumCPU())
-	//lnode := new(LocalNode)
-	//port:=os.Args[1]
+
 	port:=":8081"
 	adr:=getLocalAddress()
 	addr:=adr+port
@@ -144,6 +141,16 @@ func main() {
 	fmt.Println("Instructions for execution : \n")
 	fmt.Println("Press 'G' for looking up the value for a key and Enter")
 	fmt.Println("Press 'P' for putting a key-value pair and Enter")
+	fmt.Println("Press 'D' for deleting a key from the ring and Enter")
+	fmt.Println("Press 'L' if you want to leave the ring")
+	fmt.Println("Press 'J' to join the ring once you have already left it")
+	fmt.Println("For any transaction, use the following syntax : ")
+	fmt.Println("	BEGIN")
+	fmt.Println("	G <key>")
+	fmt.Println("	P <key> <value>")
+	fmt.Println("	D <key>")
+	fmt.Println("	END")
+	fmt.Println("If you want to simulate failure of this node press Ctrl+C")
 
 for{
 	
@@ -172,8 +179,42 @@ for{
 					h := ring.config.HashFunc()
 					h.Write([]byte(key))
 					key_hash := h.Sum(nil)
-					
-					go asyncGet(adr+port,key_hash,key, ring)
+									
+					var succ SNode
+					var err error
+					err=RPC_caller1(adr+port,"FindCoordinator",key_hash,&succ)
+					checkError(err)
+					fmt.Println("Co-ordinator for the key ",key,)
+					fmt.Println(succ.Host)
+
+					var reply []*SNode
+					err=RPC_caller(succ.Host,"FindSuccessors","",&(reply))
+					checkError(err)
+
+
+					possibleNodes:=make([]string,ring.config.NumSuccessors+1)
+					possibleNodes[0]=succ.Host
+					for i,sc := range reply{
+						if sc!=nil{
+							possibleNodes[i+1]=(*sc).Host
+						}else{
+							possibleNodes[i+1]=""	
+						}
+					}
+
+					var value int
+
+					var succ_host string
+					i:=rand.Intn(len(possibleNodes))
+					succ_host = possibleNodes[i]
+					err = RPC_caller(succ_host,"Get",key,&value)
+					if(err!=nil){
+						err = RPC_caller(possibleNodes[0],"Get",key,&value)
+						checkError(err)
+					}
+
+					fmt.Println("Obtained Result from host : ",succ_host," and value is ",value)
+					fmt.Println("")	
 				}
 
 			case "P\n":
@@ -225,15 +266,6 @@ for{
 					}
 				}
 				
-				
-
-			case "L\n":
-
-				var err error
-				err=ring.lnodes[0].leave()
-				checkError(err)
-				fmt.Println("Node successfully left the ring")
-				os.Exit(0)
 
 
 			case "D\n":
@@ -261,6 +293,26 @@ for{
 				}
 
 
+
+			case "L\n":
+
+				var err error
+				err=ring.lnodes[0].leave()
+				checkError(err)
+				fmt.Println("Node successfully left the ring")
+				//os.Exit(0)
+
+
+
+			case "J\n":
+				var existing string
+				fmt.Println("Enter the address of existing node in the form of address:port ")
+				w, _ := reader.ReadString('\n')
+				existing = strings.Trim(w,"\n")
+				ring,err=Join(conf, existing)	
+
+
+
 			case "F\n":
 				
 				var key string
@@ -279,8 +331,9 @@ for{
 				var reply []*SNode
 				err:=RPC_caller(adr+port,"FindCoordinatorWithFinger",key_hash,&(reply))
 				checkError(err)
+
+				fmt.Println("Result Obtained for FindCoordinatorWithFinger : ")
 				for i, value := range reply {
-					//fmt.Println("value here : ",value)
 					if value!=nil{
 						fmt.Println("Succceesssor ",i,"th : ",*(reply[i]))
 					}
@@ -308,10 +361,7 @@ for{
 						case "G":
 							fmt.Println("You chose to get the value for a key")
 							var key string
-							//fmt.Printf("Enter Key :  ")
-							//w, _ := reader.ReadString('\n')
 							key = strings.Trim(tok[1],"\n")
-							//fmt.Println("key Entered : 	",key)
 							
 							var ln *LocalNode
 							ln = ring.lnodes[0]
@@ -335,12 +385,8 @@ for{
 						case "P":
 							fmt.Println("You chose to put a new key-value pair")
 							var kv Data
-							//fmt.Printf("Enter the Key :  ")
-							//w, _ := reader.ReadString('\n')
 							kv.Key = strings.Trim(tok[1],"\n")
 
-							//fmt.Printf("Enter the Value :  ")
-							//t, _ := reader.ReadString('\n')
 							v := strings.Trim(tok[2],"\n")
 							var err error
 							kv.Value, err = strconv.Atoi(v)
@@ -386,8 +432,6 @@ for{
 							fmt.Println("You chose to delete an existing key-value pair")
 						
 							var kv string
-							//fmt.Printf("Enter the Key :  ")
-							//w, _ := reader.ReadString('\n')
 							kv = strings.Trim(tok[1],"\n")
 
 							// Hash the key

@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/big"
+	"fmt"
 )
 
 type closestPreceedingVnodeIterator struct {
@@ -13,6 +14,7 @@ type closestPreceedingVnodeIterator struct {
 }
 
 func (cp *closestPreceedingVnodeIterator) init(vn *LocalNode, key []byte) {
+	fmt.Println("Entered init in closestPreceedingVnodeIterator")
 	cp.key = key
 	cp.vn = vn
 	cp.successor_idx = len(vn.Successors) - 1
@@ -21,6 +23,7 @@ func (cp *closestPreceedingVnodeIterator) init(vn *LocalNode, key []byte) {
 }
 
 func (cp *closestPreceedingVnodeIterator) Next() *SNode {
+	fmt.Println("Entered Next in closestPreceedingVnodeIterator")
 	// Try to find each node
 	var successor_node *SNode
 	var finger_node *SNode

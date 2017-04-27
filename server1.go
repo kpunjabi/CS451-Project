@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 	"io/ioutil"
-	//"runtime"
 	"math/rand"
 	"net/rpc/jsonrpc"
 )
@@ -54,12 +53,7 @@ func RPC_caller(nodeAddr string, funcName string, args interface{}, reply interf
 			//log.Fatal("communication error:", err)
 		fmt.Println("Communication error : ",err)
 	}
-	/*
-	else{
-		fmt.Println("\n Communicated successfully wt reply as : ", reply)
-		fmt.Println("\n")
-	}
-	*/
+	
 	return err
 }
 
@@ -127,18 +121,19 @@ func getLocalAddress() string {
 func main() {
 
 	filename := "testoutput.txt"
-	//runtime.GOMAXPROCS(runtime.NumCPU())
-	//lnode := new(LocalNode)
+	
 	port:=os.Args[1]
-	//port:=":8085"
 	adr:=getLocalAddress()
 	addr:=adr+":"+port
 	conf := DefaultConfig(addr)
-	
+	//var ring *Ring
+	//var err error
 	
 	ring,err := Join(conf,"172.17.0.1:8081")
 	checkError(err)
 	fmt.Println("Ring joined successfully : ", ring)
+	
+
 	
 	
 	/*
@@ -152,6 +147,16 @@ func main() {
 	fmt.Println("Instructions for execution : \n")
 	fmt.Println("Press 'G' for looking up the value for a key and Enter")
 	fmt.Println("Press 'P' for putting a key-value pair and Enter")
+	fmt.Println("Press 'D' for deleting a key from the ring and Enter")
+	fmt.Println("Press 'L' if you want to leave the ring")
+	fmt.Println("Press 'J' to join the ring once you have already left it")
+	fmt.Println("For any transaction, use the following syntax : ")
+	fmt.Println("	BEGIN")
+	fmt.Println("	G <key>")
+	fmt.Println("	P <key> <value>")
+	fmt.Println("	D <key>")
+	fmt.Println("	END")
+	fmt.Println("If you want to simulate failure of this node press Ctrl+C")
 
 for{
 	
@@ -166,10 +171,7 @@ for{
 			w, _ := reader.ReadString('\n')
 			key = strings.Trim(w,"\n")
 			fmt.Println("key Entered : ",key)
-			
-
-			///TODO :: First check in your own map if present return the value else find its successor
-			
+						
 			var ln *LocalNode
 			ln = ring.lnodes[0]
 
@@ -184,7 +186,41 @@ for{
 				h.Write([]byte(key))
 				key_hash := h.Sum(nil)
 				
-				go asyncGet(adr+":"+port,key_hash,key, ring)
+				var succ SNode
+				var err error
+				err=RPC_caller1(adr+":"+port,"FindCoordinator",key_hash,&succ)
+				checkError(err)
+				fmt.Println("Co-ordinator for the key ",key,)
+				fmt.Println(succ.Host)
+
+				var reply []*SNode
+				err=RPC_caller(succ.Host,"FindSuccessors","",&(reply))
+				checkError(err)
+
+
+				possibleNodes:=make([]string,ring.config.NumSuccessors+1)
+				possibleNodes[0]=succ.Host
+				for i,sc := range reply{
+					if sc!=nil{
+						possibleNodes[i+1]=(*sc).Host
+					}else{
+						possibleNodes[i+1]=""	
+					}
+				}
+
+				var value int
+
+				var succ_host string
+				i:=rand.Intn(len(possibleNodes))
+				succ_host = possibleNodes[i]
+				err = RPC_caller(succ_host,"Get",key,&value)
+				if(err!=nil){
+					err = RPC_caller(possibleNodes[0],"Get",key,&value)
+					checkError(err)
+				}
+
+				fmt.Println("Obtained Result from host : ",succ_host," and value is ",value)
+				fmt.Println("")	
 			}
 
 		case "P\n":
@@ -200,18 +236,12 @@ for{
 			var err error
 			kv.Value, err = strconv.Atoi(v)
 			checkError(err)
-			/*
-			var rep string
-			err = RPC_caller(adr+":8081","Ping",nil,&rep)
-			fmt.Println(rep)
-			*/
-
+			
 			// Hash the key
 			h := ring.config.HashFunc()
 			h.Write([]byte(kv.Key))
 			key_hash := h.Sum(nil)
 
-			//fmt.Println("Before FindCoordinator call")
 
 			var succ SNode
 			err=RPC_caller1(adr+":"+port,"FindCoordinator",key_hash,&succ)
@@ -243,18 +273,6 @@ for{
 			}
 
 
-		case "L\n":
-
-				var err error
-				/*
-				var reply string
-				err=RPC_caller(ring.lnodes[0].Successors[0].Host,"PutAll",&(ring.lnodes[0].Store), &reply)
-				checkError(err)
-				*/
-				err=ring.lnodes[0].leave()
-				checkError(err)
-				fmt.Println("Node successfully left the ring")
-				
 
 		case "D\n":
 			fmt.Println("You chose to delete an existing key-value pair")
@@ -280,9 +298,25 @@ for{
 				fmt.Println("Key value pair Deleted Successfully")
 			}
 			
-			
-		case "F\n":
-			
+		
+		case "L\n":
+
+				var err error
+				err=ring.lnodes[0].leave()
+				checkError(err)
+				fmt.Println("Node successfully left the ring")
+				//os.Exit(0)
+
+
+		case "J\n":
+				var existing string
+				fmt.Println("Enter the address of existing node in the form of address:port ")
+				w, _ := reader.ReadString('\n')
+				existing = strings.Trim(w,"\n")
+				ring,err=Join(conf, existing)	
+				
+
+		case "F\n":			
 			var key string
 			fmt.Printf("Enter Key :  ")
 			w, _ := reader.ReadString('\n')
@@ -299,8 +333,9 @@ for{
 			var reply []*SNode
 			err:=RPC_caller(adr+":"+port,"FindCoordinatorWithFinger",key_hash,&(reply))
 			checkError(err)
+
+			fmt.Println("Result Obtained for FindCoordinatorWithFinger : ")
 			for i, value := range reply {
-				//fmt.Println("value here : ",value)
 				if value!=nil{
 					fmt.Println("Succceesssor ",i,"th : ",*(reply[i]))
 				}
